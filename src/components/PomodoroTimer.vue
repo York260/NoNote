@@ -6,12 +6,19 @@ const props = defineProps<{
   timeDisplay: string
   phase: 'idle' | 'work' | 'break'
   isRunning: boolean
+  isOvertime?: boolean
 }>()
 
 const circumference = 2 * Math.PI * 120
 const strokeDashoffset = computed(() => circumference * (1 - props.progress))
-const strokeColor = computed(() => props.phase === 'break' ? '#34C759' : '#007AFF')
-const bgStrokeColor = computed(() => props.phase === 'break' ? 'rgba(52,199,89,0.12)' : 'rgba(0,122,255,0.12)')
+const strokeColor = computed(() => {
+  if (props.isOvertime) return '#FF9500'
+  return props.phase === 'break' ? '#34C759' : '#007AFF'
+})
+const bgStrokeColor = computed(() => {
+  if (props.isOvertime) return 'rgba(255,149,0,0.12)'
+  return props.phase === 'break' ? 'rgba(52,199,89,0.12)' : 'rgba(0,122,255,0.12)'
+})
 </script>
 
 <template>
@@ -37,8 +44,8 @@ const bgStrokeColor = computed(() => props.phase === 'break' ? 'rgba(52,199,89,0
     </svg>
     <div class="timer-display">
       <div class="timer-time">{{ timeDisplay }}</div>
-      <div class="timer-label">
-        {{ phase === 'work' ? '專注中' : phase === 'break' ? '休息中' : '' }}
+      <div class="timer-label" :class="{ overtime: isOvertime }">
+        {{ isOvertime ? '已超時' : phase === 'work' ? '專注中' : phase === 'break' ? '休息中' : '' }}
       </div>
     </div>
   </div>
@@ -80,5 +87,10 @@ const bgStrokeColor = computed(() => props.phase === 'break' ? 'rgba(52,199,89,0
   font-size: 14px;
   color: var(--color-text-secondary);
   margin-top: 4px;
+}
+
+.timer-label.overtime {
+  color: #FF9500;
+  font-weight: 500;
 }
 </style>

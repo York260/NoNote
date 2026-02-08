@@ -8,8 +8,8 @@ import PomodoroTimer from '../components/PomodoroTimer.vue'
 import TagBadge from '../components/TagBadge.vue'
 
 const {
-  settings, phase, isRunning, completedToday, progress, timeDisplay,
-  startWork, startBreak, pause, resume, cancel, complete, skipToNext, remainingSeconds,
+  settings, phase, isRunning, completedToday, progress, timeDisplay, isOvertime,
+  startWork, pause, resume, cancel, complete, skipToNext,
 } = usePomodoro()
 const { addNote } = useNotes()
 const { getSuggestions, recordMemory } = useMemory()
@@ -100,17 +100,6 @@ function saveNote(result: { phase: string; startTime: number; duration: number }
   noteAnnotation.value = ''
 }
 
-// Auto-complete when timer reaches 0
-watch(remainingSeconds, (val) => {
-  if (val === 0 && phase.value !== 'idle') {
-    const result = complete()
-    saveNote(result)
-    // Auto start next phase
-    if (result.phase === 'work') {
-      startBreak()
-    }
-  }
-})
 </script>
 
 <template>
@@ -158,6 +147,7 @@ watch(remainingSeconds, (val) => {
         :time-display="timeDisplay"
         :phase="phase"
         :is-running="isRunning"
+        :is-overtime="isOvertime"
       />
 
       <!-- Idle: Start button -->

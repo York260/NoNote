@@ -39,47 +39,65 @@ export function usePomodoro() {
   const settings = ref<PomodoroSettings>(loadSettings())
   const phase = ref<'idle' | 'work' | 'break'>('idle')
   const totalSeconds = ref(0)
-  const remainingSeconds = ref(0)
   const isRunning = ref(false)
   const completedToday = ref(loadTodayCount())
   const pomodoroCount = ref(0)
   const startTime = ref<number | null>(null)
+  // Track paused time to exclude from elapsed calculation
+  const pausedAt = ref<number | null>(null)
+  const accumulatedPauseMs = ref(0)
+  // Reactive tick counter (updated by interval to trigger re-computation)
+  const now = ref(Date.now())
 
   let timer: ReturnType<typeof setInterval> | null = null
 
   watch(settings, (val) => saveSettings(val), { deep: true })
 
+  // Elapsed seconds based on real clock time
+  const elapsedSeconds = computed(() => {
+    if (!startTime.value) return 0
+    const currentTime = pausedAt.value ?? now.value
+    const realElapsed = currentTime - startTime.value - accumulatedPauseMs.value
+    return Math.max(0, Math.floor(realElapsed / 1000))
+  })
+
+  // Remaining can go negative (overtime)
+  const remainingSeconds = computed(() => totalSeconds.value - elapsedSeconds.value)
+
+  // Whether we've passed the target time
+  const isOvertime = computed(() => remainingSeconds.value < 0)
+
+  // Overtime seconds (positive value)
+  const overtimeSeconds = computed(() => Math.max(0, -remainingSeconds.value))
+
   function startWork() {
     const minutes = settings.value.workMinutes
     totalSeconds.value = minutes * 60
-    remainingSeconds.value = totalSeconds.value
     phase.value = 'work'
     isRunning.value = true
     startTime.value = Date.now()
-    tick()
+    pausedAt.value = null
+    accumulatedPauseMs.value = 0
+    startTick()
   }
 
   function startBreak() {
     const isLong = pomodoroCount.value > 0 && pomodoroCount.value % settings.value.longBreakInterval === 0
     const minutes = isLong ? settings.value.longBreakMinutes : settings.value.breakMinutes
     totalSeconds.value = minutes * 60
-    remainingSeconds.value = totalSeconds.value
     phase.value = 'break'
     isRunning.value = true
     startTime.value = Date.now()
-    tick()
+    pausedAt.value = null
+    accumulatedPauseMs.value = 0
+    startTick()
   }
 
-  function tick() {
+  function startTick() {
     stopTimer()
     timer = setInterval(() => {
-      if (remainingSeconds.value > 0) {
-        remainingSeconds.value--
-      } else {
-        stopTimer()
-        isRunning.value = false
-      }
-    }, 1000)
+      now.value = Date.now()
+    }, 500)
   }
 
   function stopTimer() {
@@ -91,21 +109,27 @@ export function usePomodoro() {
 
   function pause() {
     stopTimer()
+    pausedAt.value = Date.now()
     isRunning.value = false
   }
 
   function resume() {
+    if (pausedAt.value) {
+      accumulatedPauseMs.value += Date.now() - pausedAt.value
+      pausedAt.value = null
+    }
     isRunning.value = true
-    tick()
+    startTick()
   }
 
   function cancel() {
     stopTimer()
     phase.value = 'idle'
     isRunning.value = false
-    remainingSeconds.value = 0
     totalSeconds.value = 0
     startTime.value = null
+    pausedAt.value = null
+    accumulatedPauseMs.value = 0
   }
 
   function complete() {
@@ -115,17 +139,17 @@ export function usePomodoro() {
       completedToday.value++
       saveTodayCount(completedToday.value)
     }
-    const elapsed = totalSeconds.value - remainingSeconds.value
     const result = {
       phase: phase.value,
       startTime: startTime.value!,
-      duration: Math.round(elapsed / 60),
+      duration: Math.round(elapsedSeconds.value / 60),
     }
     phase.value = 'idle'
     isRunning.value = false
-    remainingSeconds.value = 0
     totalSeconds.value = 0
     startTime.value = null
+    pausedAt.value = null
+    accumulatedPauseMs.value = 0
     return result
   }
 
@@ -141,15 +165,20 @@ export function usePomodoro() {
 
   const progress = computed(() => {
     if (totalSeconds.value === 0) return 0
-    return 1 - remainingSeconds.value / totalSeconds.value
+    // Clamp at 1 so the circle fills completely, overtime doesn't wrap
+    return Math.min(1, elapsedSeconds.value / totalSeconds.value)
   })
 
-  const displayMinutes = computed(() => Math.floor(remainingSeconds.value / 60))
-  const displaySeconds = computed(() => remainingSeconds.value % 60)
-
   const timeDisplay = computed(() => {
-    const m = String(displayMinutes.value).padStart(2, '0')
-    const s = String(displaySeconds.value).padStart(2, '0')
+    if (isOvertime.value) {
+      const os = overtimeSeconds.value
+      const m = String(Math.floor(os / 60)).padStart(2, '0')
+      const s = String(os % 60).padStart(2, '0')
+      return `+${m}:${s}`
+    }
+    const r = remainingSeconds.value
+    const m = String(Math.floor(r / 60)).padStart(2, '0')
+    const s = String(r % 60).padStart(2, '0')
     return `${m}:${s}`
   })
 
@@ -166,6 +195,7 @@ export function usePomodoro() {
     startTime,
     progress,
     timeDisplay,
+    isOvertime,
     startWork,
     startBreak,
     pause,
