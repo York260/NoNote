@@ -30,13 +30,46 @@ const groupedByDate = computed(() => {
   return groups
 })
 
+// Calculate duration map: noteId -> calculated minutes (time to next note)
+const durationMap = computed(() => {
+  const map: Record<string, number | undefined> = {}
+  for (const dayNotes of Object.values(groupedByDate.value)) {
+    // dayNotes are sorted newest-first, reverse for chronological order
+    const chronological = [...dayNotes].sort((a, b) => a.createdAt - b.createdAt)
+    for (let i = 0; i < chronological.length; i++) {
+      const note = chronological[i]!
+      if (i < chronological.length - 1) {
+        const next = chronological[i + 1]!
+        const diffMinutes = Math.round((next.createdAt - note.createdAt) / 60000)
+        map[note.id] = diffMinutes
+      }
+      // Last note of the day: no entry (undefined)
+    }
+  }
+  return map
+})
+
+function formatDuration(minutes: number): string {
+  if (minutes < 60) return `${minutes} 分鐘`
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  return m > 0 ? `${h} 小時 ${m} 分鐘` : `${h} 小時`
+}
+
 async function copyDayNotes(dateLabel: string, notes: Note[]) {
-  const lines = notes.map(n => {
+  const chronological = [...notes].sort((a, b) => a.createdAt - b.createdAt)
+  const lines = chronological.map((n) => {
     const time = new Date(n.createdAt).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' })
     let line = `${time} ${n.content}`
     if (n.tags.length) line += ` [${n.tags.join(', ')}]`
+    // Duration: manual > calculated > pomodoro
+    const dur = n.manualDuration ?? durationMap.value[n.id]
+    if (dur != null) {
+      line += ` (${formatDuration(dur)})`
+    } else if (n.duration) {
+      line += ` (${n.pomodoroType === 'break' ? '休息' : '專注'} ${n.duration} 分鐘)`
+    }
     if (n.annotation) line += `\n  備註：${n.annotation}`
-    if (n.duration) line += `\n  ${n.pomodoroType === 'break' ? '休息' : '專注'} ${n.duration} 分鐘`
     return line
   })
   const text = `${dateLabel}\n${'─'.repeat(20)}\n${lines.join('\n')}`
@@ -64,7 +97,12 @@ async function copyDayNotes(dateLabel: string, notes: Note[]) {
         </button>
       </div>
       <TransitionGroup name="slide-up" tag="div" class="notes-list">
-        <NoteCard v-for="note in notes" :key="note.id" :note="note" />
+        <NoteCard
+          v-for="note in notes"
+          :key="note.id"
+          :note="note"
+          :calculated-duration="durationMap[note.id]"
+        />
       </TransitionGroup>
     </div>
   </div>

@@ -6,6 +6,7 @@ export interface Note {
   createdAt: number
   updatedAt: number
   duration?: number
+  manualDuration?: number
   pomodoroType?: 'work' | 'break'
 }
 
